@@ -125,8 +125,8 @@ from the tools Pi has active at startup.
 ## Available `codemode` API
 
 `exec` recreates the Pi built-in tool definitions for the current session cwd.
-The API always declares every built-in tool; whether a call succeeds is governed
-at runtime by the `/codeMode` configuration:
+Its description declares **exactly the tools currently enabled** in `/codeMode`,
+e.g. with everything on:
 
 ```ts
 codemode.read(input);
@@ -141,10 +141,12 @@ codemode.ls(input);
 Notes:
 
 - `exec` does not expose itself recursively.
+- When you toggle a tool in `/codeMode`, `exec` is re-registered so its
+  description always matches the orchestrable set — the model is never shown a
+  tool it cannot call. (Toggling a tool therefore invalidates the prompt cache
+  once; toggling Code Mode on/off does too.)
 - `exec` executes its own copies of the built-in tool definitions, so it can
-  orchestrate a tool even after that tool has been hidden from the model.
-- A tool turned `off` in `/codeMode` is still listed in the API but returns an
-  error when called; toggle it `on` to enable it.
+  orchestrate a tool even though that tool is hidden from the model directly.
 - Arbitrary third-party extension tools are not exposed because Pi currently
   provides them through `pi.getAllTools()` as metadata, not executable definitions.
 
@@ -298,8 +300,8 @@ Pi 启动时启用的工具来初始化。
 
 ## 可用的 `codemode` API
 
-`exec` 会基于当前 session 的 cwd 重新创建 Pi 内置工具定义。API 始终声明全部内置工具；
-某次调用是否成功，由运行时的 `/codeMode` 配置决定：
+`exec` 会基于当前 session 的 cwd 重新创建 Pi 内置工具定义。它的描述**只声明
+`/codeMode` 中当前启用的工具** —— 例如全部开启时：
 
 ```ts
 codemode.read(input);
@@ -314,8 +316,10 @@ codemode.ls(input);
 注意：
 
 - `exec` 不会递归暴露自己。
-- `exec` 执行的是它自己复制的内置工具定义，所以即使某个工具已对模型隐藏，`exec` 仍可编排它。
-- 在 `/codeMode` 里被设为 `off` 的工具仍会出现在 API 里，但调用时会返回错误；切到 `on` 才可用。
+- 在 `/codeMode` 里切换某个工具时，`exec` 会被重新注册，其描述始终与可编排集合一致 ——
+  模型永远不会看到一个它无法调用的工具。（因此切换单个工具会让 prompt 缓存失效一次；
+  切换 Code Mode 总开关同样如此。）
+- `exec` 执行的是它自己复制的内置工具定义，所以即使某个工具对模型直接隐藏，`exec` 仍可编排它。
 - 任意第三方 extension 工具不会被暴露，因为 Pi 目前通过 `pi.getAllTools()` 提供的是工具元数据，不是可执行定义。
 
 ## 安全模型
