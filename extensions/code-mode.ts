@@ -733,11 +733,19 @@ async function openCodeModeSettings(pi: ExtensionAPI, ctx: ExtensionContext): Pr
 }
 
 export default function codeModeExtension(pi: ExtensionAPI) {
-	// Per-session: the startup tool snapshot must be captured before applyState
-	// first hides the built-in tools, and the built-ins are not yet populated in
-	// getActiveTools() at session_start — so initialization is deferred to the
-	// first agent_start of each session.
+	// Capture the startup tool snapshot and load the saved config once per
+	// session. This must happen before /codeMode can open or applyState first
+	// hides the built-in tools — otherwise opening /codeMode before the first
+	// message would edit (and persist) stale all-on defaults.
 	let initialized = false;
+
+	const ensureInitialized = () => {
+		if (initialized) return;
+		const active = pi.getActiveTools();
+		startupBuiltIns = new Set(BUILT_IN_TOOL_NAMES.filter((name) => active.includes(name)));
+		config = loadConfig(startupBuiltIns);
+		initialized = true;
+	};
 
 	pi.on("session_start", (_event, ctx) => {
 		initialized = false;
@@ -751,22 +759,21 @@ export default function codeModeExtension(pi: ExtensionAPI) {
 						commandCtx.ui.notify(`/${COMMAND_NAME} needs an interactive terminal.`, "warning");
 						return;
 					}
+					ensureInitialized();
 					await openCodeModeSettings(pi, commandCtx);
 				},
 			});
 			commandRegistered = true;
 		}
+
+		ensureInitialized();
+		applyState(pi);
 	});
 
 	// Re-assert the tool list each turn so a manual `pi config` change cannot
 	// silently re-expose the built-in tools while Code Mode is on.
 	pi.on("agent_start", () => {
-		if (!initialized) {
-			const active = pi.getActiveTools();
-			startupBuiltIns = new Set(BUILT_IN_TOOL_NAMES.filter((name) => active.includes(name)));
-			config = loadConfig(startupBuiltIns);
-			initialized = true;
-		}
+		ensureInitialized();
 		applyState(pi);
 	});
 }
