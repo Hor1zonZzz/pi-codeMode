@@ -104,8 +104,9 @@ arrow keys to move and **Space** to cycle each row:
   from inside `exec` fails that call with a clear error.
 
 Changes apply immediately and persist across sessions in
-`~/.pi-codemode/config.json`. On first run of each session the defaults are
-seeded from the tools Pi has active at startup.
+`~/.pi/agent/codemode-extension.json` (alongside Pi's own config; honors
+`$PI_CODING_AGENT_DIR`). On first run of each session the defaults are seeded
+from the tools Pi has active at startup.
 
 ## Available `codemode` API
 
@@ -264,8 +265,9 @@ async () => {
   `exec` 被允许编排哪些内置工具。在 `exec` 里调用一个 `off` 的工具会让该次调用失败
   并返回明确错误。
 
-修改即时生效，并保存在 `~/.pi-codemode/config.json` 中跨会话持久化。每个会话首次运行
-时，默认值会根据 Pi 启动时启用的工具来初始化。
+修改即时生效，并保存在 `~/.pi/agent/codemode-extension.json` 中跨会话持久化（与 Pi
+自身配置放在一起，并遵循 `$PI_CODING_AGENT_DIR`）。每个会话首次运行时，默认值会根据
+Pi 启动时启用的工具来初始化。
 
 ## 可用的 `codemode` API
 

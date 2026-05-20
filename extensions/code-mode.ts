@@ -1,6 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import {
 	createBashToolDefinition,
@@ -13,6 +12,7 @@ import {
 	defineTool,
 	type ExtensionAPI,
 	type ExtensionContext,
+	getAgentDir,
 	getSettingsListTheme,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
@@ -27,8 +27,11 @@ const TOOL_CALL_PREVIEW_LIMIT = 1_000;
 type ToolName = "read" | "write" | "edit" | "bash" | "grep" | "find" | "ls";
 const BUILT_IN_TOOL_NAMES: ToolName[] = ["read", "write", "edit", "bash", "grep", "find", "ls"];
 
-const CONFIG_DIR = join(homedir(), ".pi-codemode");
-const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+/** Config lives alongside Pi's own config under the agent directory
+ *  (~/.pi/agent/, or $PI_CODING_AGENT_DIR when set). */
+function getConfigPath(): string {
+	return join(getAgentDir(), "codemode-extension.json");
+}
 
 const CodeModeParams = Type.Object({
 	code: Type.String({
@@ -427,7 +430,7 @@ function defaultTools(active: Set<ToolName>): Record<ToolName, boolean> {
 function loadConfig(startupActive: Set<ToolName>): CodeModeConfig {
 	let saved: { enabled?: unknown; tools?: Record<string, unknown> } | null = null;
 	try {
-		saved = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+		saved = JSON.parse(readFileSync(getConfigPath(), "utf8"));
 	} catch {
 		saved = null;
 	}
@@ -446,8 +449,9 @@ function loadConfig(startupActive: Set<ToolName>): CodeModeConfig {
 
 function saveConfig(): void {
 	try {
-		mkdirSync(CONFIG_DIR, { recursive: true });
-		writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
+		const path = getConfigPath();
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
 	} catch {
 		// Persisting config is best-effort; a read-only home directory should not break the session.
 	}
