@@ -1,0 +1,30 @@
+{
+  "name": "pi-codemode-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pi extension that adds a Cloudflare-style code_mode tool for orchestrating Pi tools with JavaScript.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "codemode"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/code-mode.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.75.3",
+    "@types/node": "^24.10.1",
+    "typebox": "^1.1.38",
+    "typescript": "^5.9.3"
+  }
+}
