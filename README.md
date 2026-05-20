@@ -61,6 +61,7 @@ Pi core packages are declared as peer dependencies, following the package guidan
 {
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
     "typebox": "*"
   }
 }
@@ -89,9 +90,28 @@ The tool returns a JSON summary containing:
 - `timedOut`: whether execution exceeded the timeout
 - `error`: runtime, validation, tool, or timeout error text when present
 
+## The `/codeMode` Command
+
+Run `/codeMode` in an interactive Pi session to open a settings overlay. Use the
+arrow keys to move and **Space** to cycle each row:
+
+- **Code Mode** — `enabled` / `disabled`. When enabled, the built-in tools are
+  hidden from the model and `exec` is exposed in their place; the model can only
+  reach them indirectly through `exec`. When disabled, `exec` is hidden and the
+  built-in tools Pi had at startup are restored.
+- **tool: read / write / edit / bash / grep / find / ls** — `on` / `off`. Controls
+  which built-in tools `exec` is allowed to orchestrate. Calling an `off` tool
+  from inside `exec` fails that call with a clear error.
+
+Changes apply immediately and persist across sessions in
+`~/.pi-codemode/config.json`. On first run of each session the defaults are
+seeded from the tools Pi has active at startup.
+
 ## Available `codemode` API
 
-`exec` recreates the active Pi built-in tool definitions for the current session cwd and exposes only the tools that are currently enabled:
+`exec` recreates the Pi built-in tool definitions for the current session cwd.
+The API always declares every built-in tool; whether a call succeeds is governed
+at runtime by the `/codeMode` configuration:
 
 ```ts
 codemode.read(input);
@@ -106,8 +126,12 @@ codemode.ls(input);
 Notes:
 
 - `exec` does not expose itself recursively.
-- Arbitrary third-party extension tools are not exposed because Pi currently provides them through `pi.getAllTools()` as metadata, not executable definitions.
-- If mutating tools such as `write`, `edit`, or `bash` are active in Pi, `exec` can orchestrate them too.
+- `exec` executes its own copies of the built-in tool definitions, so it can
+  orchestrate a tool even after that tool has been hidden from the model.
+- A tool turned `off` in `/codeMode` is still listed in the API but returns an
+  error when called; toggle it `on` to enable it.
+- Arbitrary third-party extension tools are not exposed because Pi currently
+  provides them through `pi.getAllTools()` as metadata, not executable definitions.
 
 ## Safety Model
 
@@ -200,6 +224,7 @@ Pi 核心包按照 package 文档建议声明为 peer dependencies，因为这�
 {
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
     "typebox": "*"
   }
 }
@@ -228,9 +253,24 @@ async () => {
 - `timedOut`：是否超时
 - `error`：运行时错误、参数校验错误、工具错误或超时错误
 
+## `/codeMode` 命令
+
+在交互式 Pi 会话里运行 `/codeMode` 会打开一个设置面板。用方向键移动，用**空格**切换每一行的值：
+
+- **Code Mode** —— `enabled` / `disabled`。启用时，内置工具会从模型面前隐藏，由
+  `exec` 取而代之，模型只能通过 `exec` 间接调用它们；禁用时，`exec` 被隐藏，并恢复
+  Pi 启动时原有的内置工具。
+- **tool: read / write / edit / bash / grep / find / ls** —— `on` / `off`，控制
+  `exec` 被允许编排哪些内置工具。在 `exec` 里调用一个 `off` 的工具会让该次调用失败
+  并返回明确错误。
+
+修改即时生效，并保存在 `~/.pi-codemode/config.json` 中跨会话持久化。每个会话首次运行
+时，默认值会根据 Pi 启动时启用的工具来初始化。
+
 ## 可用的 `codemode` API
 
-`exec` 会基于当前 session 的 cwd 重新创建 Pi 内置工具定义，并且只暴露当前启用的内置工具：
+`exec` 会基于当前 session 的 cwd 重新创建 Pi 内置工具定义。API 始终声明全部内置工具；
+某次调用是否成功，由运行时的 `/codeMode` 配置决定：
 
 ```ts
 codemode.read(input);
@@ -245,8 +285,9 @@ codemode.ls(input);
 注意：
 
 - `exec` 不会递归暴露自己。
+- `exec` 执行的是它自己复制的内置工具定义，所以即使某个工具已对模型隐藏，`exec` 仍可编排它。
+- 在 `/codeMode` 里被设为 `off` 的工具仍会出现在 API 里，但调用时会返回错误；切到 `on` 才可用。
 - 任意第三方 extension 工具不会被暴露，因为 Pi 目前通过 `pi.getAllTools()` 提供的是工具元数据，不是可执行定义。
-- 如果 Pi 当前启用了 `write`、`edit` 或 `bash` 这类可变更工具，`exec` 也可以编排它们。
 
 ## 安全模型
 

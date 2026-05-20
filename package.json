@@ -1,8 +1,8 @@
 {
   "name": "pi-codemode-extension",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Pi extension that adds an exec tool for orchestrating Pi tools with JavaScript.",
+  "description": "Pi extension that adds an exec tool for orchestrating Pi tools with JavaScript, plus a /codeMode command to toggle it.",
   "keywords": [
     "pi-package",
     "pi-extension",
@@ -34,10 +34,12 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.75.3",
+    "@earendil-works/pi-tui": "^0.75.3",
     "@types/node": "^24.10.1",
     "typebox": "^1.1.38",
     "typescript": "^5.9.3"

@@ -1,3 +1,6 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import {
 	createBashToolDefinition,
@@ -10,17 +13,22 @@ import {
 	defineTool,
 	type ExtensionAPI,
 	type ExtensionContext,
+	getSettingsListTheme,
 	type ToolDefinition,
-	type ToolInfo,
 } from "@earendil-works/pi-coding-agent";
-import { Type, type Static, type TSchema } from "typebox";
+import { type SettingItem, SettingsList } from "@earendil-works/pi-tui";
+import { type Static, type TSchema, Type } from "typebox";
 import { Value } from "typebox/value";
 
 const TOOL_NAME = "exec";
+const COMMAND_NAME = "codeMode";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const TOOL_CALL_PREVIEW_LIMIT = 1_000;
 type ToolName = "read" | "write" | "edit" | "bash" | "grep" | "find" | "ls";
 const BUILT_IN_TOOL_NAMES: ToolName[] = ["read", "write", "edit", "bash", "grep", "find", "ls"];
+
+const CONFIG_DIR = join(homedir(), ".pi-codemode");
+const CONFIG_PATH = join(CONFIG_DIR, "config.json");
 
 const CodeModeParams = Type.Object({
 	code: Type.String({
@@ -35,7 +43,25 @@ const CodeModeParams = Type.Object({
 });
 
 type CodeModeParams = Static<typeof CodeModeParams>;
-type BuiltInToolDefinitions = Partial<Record<ToolName, ToolDefinition<any, any, any>>>;
+type BuiltInToolDefinitions = Record<ToolName, ToolDefinition<any, any, any>>;
+
+/**
+ * Persisted Code Mode configuration. Lives at ~/.pi-codemode/config.json and is
+ * edited interactively through the /codeMode command.
+ */
+interface CodeModeConfig {
+	/** When true, the exec tool is exposed and built-in tools are hidden from the model. */
+	enabled: boolean;
+	/** Which built-in tools exec is allowed to orchestrate. */
+	tools: Record<ToolName, boolean>;
+}
+
+/** Current config, reloaded from disk on every session_start. */
+let config: CodeModeConfig = { enabled: true, tools: defaultTools(new Set(BUILT_IN_TOOL_NAMES)) };
+/** Built-in tools that Pi had active at session startup. Used to restore them when Code Mode is turned off. */
+let startupBuiltIns = new Set<ToolName>();
+/** registerCommand is idempotent per process; session_start can fire repeatedly. */
+let commandRegistered = false;
 
 interface LogEntry {
 	level: "log" | "info" | "warn" | "error";
@@ -252,9 +278,10 @@ function methodNameForTool(toolName: string): string {
 	return /^[A-Za-z_$]/.test(sanitized) ? sanitized : `_${sanitized}`;
 }
 
-function buildAvailableToolDefinitions(cwd: string, activeToolNames: string[]): BuiltInToolDefinitions {
-	const active = new Set(activeToolNames);
-	const allBuiltIns: Record<ToolName, ToolDefinition<any, any, any>> = {
+/** Build every built-in tool definition. exec executes these directly, so they
+ *  stay available even after the tools are hidden from the model. */
+function createAllBuiltInDefinitions(cwd: string): BuiltInToolDefinitions {
+	return {
 		read: createReadToolDefinition(cwd),
 		write: createWriteToolDefinition(cwd),
 		edit: createEditToolDefinition(cwd),
@@ -263,26 +290,13 @@ function buildAvailableToolDefinitions(cwd: string, activeToolNames: string[]): 
 		find: createFindToolDefinition(cwd),
 		ls: createLsToolDefinition(cwd),
 	};
-	const definitions: BuiltInToolDefinitions = {};
-
-	for (const name of BUILT_IN_TOOL_NAMES) {
-		if (active.has(name)) {
-			definitions[name] = allBuiltIns[name];
-		}
-	}
-
-	return definitions;
 }
 
-function buildToolMap(definitions: BuiltInToolDefinitions): Record<string, string> {
+function buildToolMap(): Record<string, string> {
 	const toolMap: Record<string, string> = {};
-
 	for (const name of BUILT_IN_TOOL_NAMES) {
-		if (definitions[name]) {
-			toolMap[methodNameForTool(name)] = name;
-		}
+		toolMap[methodNameForTool(name)] = name;
 	}
-
 	return toolMap;
 }
 
@@ -367,15 +381,14 @@ function schemaToType(schema: unknown): string {
 	}
 }
 
-function buildCodeModeDeclaration(tools: ToolInfo[]): string {
-	const supported = tools
-		.filter((tool) => BUILT_IN_TOOL_NAMES.includes(tool.name as ToolName))
-		.map((tool) => {
-			const methodName = methodNameForTool(tool.name);
-			return `  ${methodName}(input: ${schemaToType(tool.parameters)}): Promise<PiToolResult>;`;
-		});
-
-	const lines = supported.length > 0 ? supported : ["  // No built-in Pi tools are active for exec right now."];
+/** The codemode API declaration always lists all built-in tools. Whether a tool
+ *  is currently orchestrable is governed at runtime by the /codeMode config, so
+ *  the static tool description never drifts out of sync. */
+function buildCodeModeDeclaration(definitions: BuiltInToolDefinitions): string {
+	const lines = BUILT_IN_TOOL_NAMES.map((name) => {
+		const methodName = methodNameForTool(name);
+		return `  ${methodName}(input: ${schemaToType(definitions[name].parameters)}): Promise<PiToolResult>;`;
+	});
 
 	return [
 		"Available codemode API:",
@@ -388,27 +401,92 @@ function buildCodeModeDeclaration(tools: ToolInfo[]): string {
 	].join("\n");
 }
 
-function buildDescription(pi: ExtensionAPI): string {
-	const declaration = buildCodeModeDeclaration(pi.getAllTools().filter((tool) => pi.getActiveTools().includes(tool.name)));
+function buildDescription(cwd: string): string {
+	const declaration = buildCodeModeDeclaration(createAllBuiltInDefinitions(cwd));
 
 	return [
-		"Execute a JavaScript async arrow function that orchestrates active Pi built-in tools.",
+		"Execute a JavaScript async arrow function that orchestrates Pi built-in tools.",
 		"Provide code as a function, not a script body. Return the final value.",
 		"Use only codemode.<tool>(input) for side effects and inspection.",
+		"Individual tools can be disabled with the /codeMode command; calling a disabled tool fails that call with an error reported in the calls summary.",
 		declaration,
 		"Example: async () => { const root = await codemode.ls({ path: '.' }); console.log(root); return root; }",
 	].join("\n\n");
+}
+
+function defaultTools(active: Set<ToolName>): Record<ToolName, boolean> {
+	const tools = {} as Record<ToolName, boolean>;
+	for (const name of BUILT_IN_TOOL_NAMES) {
+		tools[name] = active.has(name);
+	}
+	return tools;
+}
+
+/** Load config from disk, falling back to the session's startup tool state for
+ *  any field that is missing or malformed. */
+function loadConfig(startupActive: Set<ToolName>): CodeModeConfig {
+	let saved: { enabled?: unknown; tools?: Record<string, unknown> } | null = null;
+	try {
+		saved = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+	} catch {
+		saved = null;
+	}
+
+	const tools = {} as Record<ToolName, boolean>;
+	for (const name of BUILT_IN_TOOL_NAMES) {
+		const savedValue = saved?.tools?.[name];
+		tools[name] = typeof savedValue === "boolean" ? savedValue : startupActive.has(name);
+	}
+
+	return {
+		enabled: typeof saved?.enabled === "boolean" ? saved.enabled : true,
+		tools,
+	};
+}
+
+function saveConfig(): void {
+	try {
+		mkdirSync(CONFIG_DIR, { recursive: true });
+		writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
+	} catch {
+		// Persisting config is best-effort; a read-only home directory should not break the session.
+	}
+}
+
+/**
+ * Reconcile Pi's model-facing tool list with the current config.
+ *  - enabled:  hide every built-in tool from the model, expose exec.
+ *  - disabled: restore the built-in tools Pi had at startup, hide exec.
+ * exec keeps orchestrating its own built-in definitions regardless.
+ */
+function applyState(pi: ExtensionAPI): void {
+	const active = new Set(pi.getActiveTools());
+
+	if (config.enabled) {
+		for (const name of BUILT_IN_TOOL_NAMES) {
+			active.delete(name);
+		}
+		active.add(TOOL_NAME);
+	} else {
+		for (const name of startupBuiltIns) {
+			active.add(name);
+		}
+		active.delete(TOOL_NAME);
+	}
+
+	pi.setActiveTools([...active]);
 }
 
 async function runCodeMode(
 	params: CodeModeParams,
 	ctx: ExtensionContext,
 	toolDefinitions: BuiltInToolDefinitions,
+	enabledTools: Set<ToolName>,
 	parentToolCallId: string,
 	signal: AbortSignal | undefined,
 ): Promise<CodeModeDetails> {
 	const timeoutMs = normalizeTimeout(params.timeoutMs);
-	const toolMap = buildToolMap(toolDefinitions);
+	const toolMap = buildToolMap();
 	const logs: LogEntry[] = [];
 	const calls: ToolCallSummary[] = [];
 	const startedAt = Date.now();
@@ -492,13 +570,22 @@ async function runCodeMode(
 				};
 				calls.push(summary);
 
-				const definition = toolDefinitions[message.toolName as ToolName];
-				if (!definition) {
-					const error = serializeError(new Error(`Tool is not available to exec: ${message.toolName}`));
+				const failCall = (errorText: string) => {
+					const error = serializeError(new Error(errorText));
 					summary.ok = false;
 					summary.error = error.message;
 					summary.durationMs = Date.now() - callStartedAt;
 					worker.postMessage({ type: "toolResult", id: message.id, ok: false, error } satisfies HostToWorkerMessage);
+				};
+
+				if (!enabledTools.has(message.toolName as ToolName)) {
+					failCall(`Tool '${message.toolName}' is disabled for Code Mode. Enable it with the /${COMMAND_NAME} command.`);
+					return;
+				}
+
+				const definition = toolDefinitions[message.toolName as ToolName];
+				if (!definition) {
+					failCall(`Tool is not available to exec: ${message.toolName}`);
 					return;
 				}
 
@@ -551,12 +638,12 @@ async function runCodeMode(
 	});
 }
 
-function buildCodeModeTool(pi: ExtensionAPI, ctx: ExtensionContext) {
+function buildCodeModeTool(ctx: ExtensionContext) {
 	return defineTool({
 		name: TOOL_NAME,
 		label: "Exec",
-		description: buildDescription(pi),
-		promptSnippet: "Run JavaScript to orchestrate active Pi built-in tools with loops, conditionals, and composed results.",
+		description: buildDescription(ctx.cwd),
+		promptSnippet: "Run JavaScript to orchestrate Pi built-in tools with loops, conditionals, and composed results.",
 		promptGuidelines: [
 			"Use exec for multi-step tool orchestration that benefits from loops, conditionals, or structured post-processing.",
 			"Pass an async arrow function as code, call only codemode.<tool>(input), and return the final value.",
@@ -566,8 +653,19 @@ function buildCodeModeTool(pi: ExtensionAPI, ctx: ExtensionContext) {
 		parameters: CodeModeParams,
 		executionMode: "sequential",
 		async execute(toolCallId, params, signal, _onUpdate, executionCtx) {
-			const availableTools = buildAvailableToolDefinitions(executionCtx?.cwd ?? ctx.cwd, pi.getActiveTools());
-			const details = await runCodeMode(params, executionCtx ?? ctx, availableTools, toolCallId, signal);
+			const activeCtx = executionCtx ?? ctx;
+
+			if (!config.enabled) {
+				const error = `Code Mode is disabled. Enable it with the /${COMMAND_NAME} command.`;
+				return {
+					content: [{ type: "text", text: JSON.stringify({ ok: false, error }, null, 2) }],
+					details: { logs: [], calls: [], durationMs: 0, timedOut: false, error } satisfies CodeModeDetails,
+				};
+			}
+
+			const allTools = createAllBuiltInDefinitions(activeCtx.cwd);
+			const enabledTools = new Set(BUILT_IN_TOOL_NAMES.filter((name) => config.tools[name]));
+			const details = await runCodeMode(params, activeCtx, allTools, enabledTools, toolCallId, signal);
 
 			const summary = {
 				ok: !details.error,
@@ -587,8 +685,84 @@ function buildCodeModeTool(pi: ExtensionAPI, ctx: ExtensionContext) {
 	});
 }
 
+/** Open the interactive /codeMode settings overlay. Space cycles each row's value. */
+async function openCodeModeSettings(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+	await ctx.ui.custom<void>(
+		(_tui, _theme, _keybindings, done) => {
+			const items: SettingItem[] = [
+				{
+					id: "__enabled",
+					label: "Code Mode",
+					description: "When enabled, exec is exposed to the model and the built-in tools are hidden behind it.",
+					currentValue: config.enabled ? "enabled" : "disabled",
+					values: ["disabled", "enabled"],
+				},
+				...BUILT_IN_TOOL_NAMES.map(
+					(name): SettingItem => ({
+						id: name,
+						label: `tool: ${name}`,
+						description: `Allow exec to orchestrate the ${name} tool.`,
+						currentValue: config.tools[name] ? "on" : "off",
+						values: ["off", "on"],
+					}),
+				),
+			];
+
+			return new SettingsList(
+				items,
+				12,
+				getSettingsListTheme(),
+				(id, newValue) => {
+					if (id === "__enabled") {
+						config.enabled = newValue === "enabled";
+					} else {
+						config.tools[id as ToolName] = newValue === "on";
+					}
+					saveConfig();
+					applyState(pi);
+				},
+				() => done(),
+			);
+		},
+		{ overlay: true },
+	);
+}
+
 export default function codeModeExtension(pi: ExtensionAPI) {
+	// Per-session: the startup tool snapshot must be captured before applyState
+	// first hides the built-in tools, and the built-ins are not yet populated in
+	// getActiveTools() at session_start — so initialization is deferred to the
+	// first agent_start of each session.
+	let initialized = false;
+
 	pi.on("session_start", (_event, ctx) => {
-		pi.registerTool(buildCodeModeTool(pi, ctx));
+		initialized = false;
+		pi.registerTool(buildCodeModeTool(ctx));
+
+		if (!commandRegistered) {
+			pi.registerCommand(COMMAND_NAME, {
+				description: "Configure Code Mode: toggle it on/off and pick which tools exec can orchestrate.",
+				handler: async (_args, commandCtx) => {
+					if (!commandCtx.hasUI) {
+						commandCtx.ui.notify(`/${COMMAND_NAME} needs an interactive terminal.`, "warning");
+						return;
+					}
+					await openCodeModeSettings(pi, commandCtx);
+				},
+			});
+			commandRegistered = true;
+		}
+	});
+
+	// Re-assert the tool list each turn so a manual `pi config` change cannot
+	// silently re-expose the built-in tools while Code Mode is on.
+	pi.on("agent_start", () => {
+		if (!initialized) {
+			const active = pi.getActiveTools();
+			startupBuiltIns = new Set(BUILT_IN_TOOL_NAMES.filter((name) => active.includes(name)));
+			config = loadConfig(startupBuiltIns);
+			initialized = true;
+		}
+		applyState(pi);
 	});
 }
