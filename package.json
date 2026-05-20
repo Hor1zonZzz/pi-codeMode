@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pi extension that adds a Cloudflare-style code_mode tool for orchestrating Pi tools with JavaScript.",
+  "description": "Pi extension that adds an exec tool for orchestrating Pi tools with JavaScript.",
   "keywords": [
     "pi-package",
     "pi-extension",
-    "codemode"
+    "codemode",
+    "exec"
   ],
   "scripts": {
     "check": "tsc --noEmit"

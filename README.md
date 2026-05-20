@@ -1,6 +1,6 @@
 # pi-codemode-extension
 
-`pi-codemode-extension` is a Pi package that registers a `code_mode` tool. It lets Pi write and run one JavaScript async function that can orchestrate active Pi built-in tools through a typed `codemode` object.
+`pi-codemode-extension` is a Pi package that registers an `exec` tool. Code Mode is the execution style: the tool lets Pi write and run one JavaScript async function that can orchestrate active Pi built-in tools through a typed `codemode` object.
 
 This follows Pi's extension/package conventions: the extension is a TypeScript module, it registers an LLM-callable tool with `pi.registerTool()`, and the package exposes the extension through the `pi.extensions` manifest in `package.json`.
 
@@ -49,7 +49,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function codeModeExtension(pi: ExtensionAPI) {
   pi.registerTool({
-    name: "code_mode",
+    name: "exec",
     // ...
   });
 }
@@ -68,7 +68,7 @@ Pi core packages are declared as peer dependencies, following the package guidan
 
 ## Usage
 
-Ask Pi to use `code_mode` when a task benefits from loops, branching, or multiple tool calls in one structured program.
+Ask Pi to use `exec` when a task benefits from loops, branching, or multiple tool calls in one structured program.
 
 Example tool input:
 
@@ -89,9 +89,9 @@ The tool returns a JSON summary containing:
 - `timedOut`: whether execution exceeded the timeout
 - `error`: runtime, validation, tool, or timeout error text when present
 
-## Available `codemode` Tools
+## Available `codemode` API
 
-`code_mode` recreates the active Pi built-in tool definitions for the current session cwd and exposes only the tools that are currently enabled:
+`exec` recreates the active Pi built-in tool definitions for the current session cwd and exposes only the tools that are currently enabled:
 
 ```ts
 codemode.read(input);
@@ -105,9 +105,9 @@ codemode.ls(input);
 
 Notes:
 
-- `code_mode` does not expose itself recursively.
+- `exec` does not expose itself recursively.
 - Arbitrary third-party extension tools are not exposed because Pi currently provides them through `pi.getAllTools()` as metadata, not executable definitions.
-- If mutating tools such as `write`, `edit`, or `bash` are active in Pi, `code_mode` can orchestrate them too.
+- If mutating tools such as `write`, `edit`, or `bash` are active in Pi, `exec` can orchestrate them too.
 
 ## Safety Model
 
@@ -139,7 +139,7 @@ PI_OFFLINE=1 pi -e ./extensions/code-mode.ts --help
 
 # pi-codemode-extension 中文说明
 
-`pi-codemode-extension` 是一个 Pi package，会注册一个 `code_mode` 工具。它允许 Pi 写入并执行一个 JavaScript async 函数，然后通过类型化的 `codemode` 对象编排当前启用的 Pi 内置工具。
+`pi-codemode-extension` 是一个 Pi package，会注册一个 `exec` 工具。Code Mode 是执行模式：这个工具允许 Pi 写入并执行一个 JavaScript async 函数，然后通过类型化的 `codemode` 对象编排当前启用的 Pi 内置工具。
 
 这个包遵循 Pi 的 extension/package 规范：扩展是 TypeScript 模块，通过 `pi.registerTool()` 注册可供模型调用的工具，并在 `package.json` 的 `pi.extensions` manifest 中声明入口文件。
 
@@ -188,7 +188,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function codeModeExtension(pi: ExtensionAPI) {
   pi.registerTool({
-    name: "code_mode",
+    name: "exec",
     // ...
   });
 }
@@ -207,7 +207,7 @@ Pi 核心包按照 package 文档建议声明为 peer dependencies，因为这�
 
 ## 使用方式
 
-当一个任务需要循环、条件分支，或者一次性组合多个工具调用时，可以让 Pi 使用 `code_mode`。
+当一个任务需要循环、条件分支，或者一次性组合多个工具调用时，可以让 Pi 使用 `exec`。
 
 工具输入示例：
 
@@ -228,9 +228,9 @@ async () => {
 - `timedOut`：是否超时
 - `error`：运行时错误、参数校验错误、工具错误或超时错误
 
-## 可用的 `codemode` 工具
+## 可用的 `codemode` API
 
-`code_mode` 会基于当前 session 的 cwd 重新创建 Pi 内置工具定义，并且只暴露当前启用的内置工具：
+`exec` 会基于当前 session 的 cwd 重新创建 Pi 内置工具定义，并且只暴露当前启用的内置工具：
 
 ```ts
 codemode.read(input);
@@ -244,9 +244,9 @@ codemode.ls(input);
 
 注意：
 
-- `code_mode` 不会递归暴露自己。
+- `exec` 不会递归暴露自己。
 - 任意第三方 extension 工具不会被暴露，因为 Pi 目前通过 `pi.getAllTools()` 提供的是工具元数据，不是可执行定义。
-- 如果 Pi 当前启用了 `write`、`edit` 或 `bash` 这类可变更工具，`code_mode` 也可以编排它们。
+- 如果 Pi 当前启用了 `write`、`edit` 或 `bash` 这类可变更工具，`exec` 也可以编排它们。
 
 ## 安全模型
 

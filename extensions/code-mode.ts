@@ -16,7 +16,7 @@ import {
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-const TOOL_NAME = "code_mode";
+const TOOL_NAME = "exec";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const TOOL_CALL_PREVIEW_LIMIT = 1_000;
 type ToolName = "read" | "write" | "edit" | "bash" | "grep" | "find" | "ls";
@@ -375,7 +375,7 @@ function buildCodeModeDeclaration(tools: ToolInfo[]): string {
 			return `  ${methodName}(input: ${schemaToType(tool.parameters)}): Promise<PiToolResult>;`;
 		});
 
-	const lines = supported.length > 0 ? supported : ["  // No built-in Pi tools are active for code_mode right now."];
+	const lines = supported.length > 0 ? supported : ["  // No built-in Pi tools are active for exec right now."];
 
 	return [
 		"Available codemode API:",
@@ -456,9 +456,9 @@ async function runCodeMode(
 
 		const timer = setTimeout(() => {
 			timedOut = true;
-			runAbort.abort(new Error(`code_mode timed out after ${timeoutMs}ms`));
+			runAbort.abort(new Error(`exec timed out after ${timeoutMs}ms`));
 			void worker.terminate().finally(() => {
-				void settle({ error: `code_mode timed out after ${timeoutMs}ms` });
+				void settle({ error: `exec timed out after ${timeoutMs}ms` });
 			});
 		}, timeoutMs);
 
@@ -494,7 +494,7 @@ async function runCodeMode(
 
 				const definition = toolDefinitions[message.toolName as ToolName];
 				if (!definition) {
-					const error = serializeError(new Error(`Tool is not available to code_mode: ${message.toolName}`));
+					const error = serializeError(new Error(`Tool is not available to exec: ${message.toolName}`));
 					summary.ok = false;
 					summary.error = error.message;
 					summary.durationMs = Date.now() - callStartedAt;
@@ -545,7 +545,7 @@ async function runCodeMode(
 
 		worker.on("exit", (code) => {
 			if (!settled && !timedOut && code !== 0) {
-				void settle({ error: `code_mode worker exited with code ${code}` });
+				void settle({ error: `exec worker exited with code ${code}` });
 			}
 		});
 	});
@@ -554,14 +554,14 @@ async function runCodeMode(
 function buildCodeModeTool(pi: ExtensionAPI, ctx: ExtensionContext) {
 	return defineTool({
 		name: TOOL_NAME,
-		label: "Code Mode",
+		label: "Exec",
 		description: buildDescription(pi),
 		promptSnippet: "Run JavaScript to orchestrate active Pi built-in tools with loops, conditionals, and composed results.",
 		promptGuidelines: [
-			"Use code_mode for multi-step tool orchestration that benefits from loops, conditionals, or structured post-processing.",
+			"Use exec for multi-step tool orchestration that benefits from loops, conditionals, or structured post-processing.",
 			"Pass an async arrow function as code, call only codemode.<tool>(input), and return the final value.",
 			"Use ordinary Pi tools directly for simple one-step work.",
-			"Do not write infinite loops; code_mode has a timeout and returns logs, calls, and result details.",
+			"Do not write infinite loops; exec has a timeout and returns logs, calls, and result details.",
 		],
 		parameters: CodeModeParams,
 		executionMode: "sequential",
