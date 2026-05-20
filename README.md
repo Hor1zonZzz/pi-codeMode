@@ -30,6 +30,20 @@ Install into project-local settings instead of user settings:
 pi install . -l
 ```
 
+## Uninstall
+
+```bash
+pi remove pi-codemode-extension
+```
+
+`pi remove` uninstalls the package and removes its settings entry. The persisted
+`/codeMode` config is written by the extension itself and is not tracked by Pi,
+so delete it manually if you want a fully clean uninstall:
+
+```bash
+rm ~/.pi/agent/codemode-extension.json
+```
+
 ## Package Manifest
 
 Pi loads this package through the `pi` manifest in `package.json`:
@@ -192,6 +206,19 @@ pi install .
 
 ```bash
 pi install . -l
+```
+
+## 卸载
+
+```bash
+pi remove pi-codemode-extension
+```
+
+`pi remove` 会卸载这个包并删除它的 settings 条目。`/codeMode` 的持久化配置是扩展自己
+写的，Pi 不会跟踪它，所以如果想彻底清理干净，需要手动删除：
+
+```bash
+rm ~/.pi/agent/codemode-extension.json
 ```
 
 ## Package Manifest
