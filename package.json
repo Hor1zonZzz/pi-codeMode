@@ -1,7 +1,6 @@
 {
   "name": "pi-codemode-extension",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Pi extension that adds an exec tool for orchestrating Pi tools with JavaScript.",
   "keywords": [
@@ -9,6 +8,21 @@
     "pi-extension",
     "codemode",
     "exec"
+  ],
+  "license": "MIT",
+  "author": "Hor1zonZzz <hor1zonlin9n@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hor1zonZzz/pi-codeMode.git"
+  },
+  "homepage": "https://github.com/Hor1zonZzz/pi-codeMode#readme",
+  "bugs": {
+    "url": "https://github.com/Hor1zonZzz/pi-codeMode/issues"
+  },
+  "files": [
+    "extensions/",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "check": "tsc --noEmit"
